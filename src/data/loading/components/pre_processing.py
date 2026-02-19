@@ -21,9 +21,40 @@ def convert_bytes_to_string(
     **kwargs,
 ) -> Dict[str, np.ndarray]:
     # For each feature to apply, cast its np.ndarray of bytes to string.
+    # Handle non-UTF-8 bytes by using error handling
     for k in batch_or_row:
         if is_feature_in_features_to_apply(features_to_apply, k):
-            batch_or_row[k] = batch_or_row[k].astype(str)
+            try:
+                # Try to decode as UTF-8 first
+                if batch_or_row[k].dtype == object:
+                    # If it's an array of bytes objects, decode each one
+                    decoded = []
+                    for item in batch_or_row[k]:
+                        if isinstance(item, bytes):
+                            try:
+                                decoded.append(item.decode('utf-8'))
+                            except UnicodeDecodeError:
+                                # If UTF-8 fails, use error handling
+                                decoded.append(item.decode('utf-8', errors='replace'))
+                        else:
+                            decoded.append(str(item))
+                    batch_or_row[k] = np.array(decoded, dtype=object)
+                else:
+                    batch_or_row[k] = batch_or_row[k].astype(str)
+            except (UnicodeDecodeError, TypeError):
+                # If direct conversion fails, try with error handling
+                # This handles cases where bytes contain non-UTF-8 data
+                if batch_or_row[k].dtype == object:
+                    decoded = []
+                    for item in batch_or_row[k]:
+                        if isinstance(item, bytes):
+                            decoded.append(item.decode('utf-8', errors='replace'))
+                        else:
+                            decoded.append(str(item))
+                    batch_or_row[k] = np.array(decoded, dtype=object)
+                else:
+                    # For non-object arrays, try to convert with error handling
+                    batch_or_row[k] = batch_or_row[k].astype(str)
     return batch_or_row
 
 def is_feature_in_features_to_apply(features_to_apply: List[str], k: str) -> bool:

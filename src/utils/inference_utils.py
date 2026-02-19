@@ -2,12 +2,14 @@ import datetime
 import logging
 import os
 import pickle
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 import torch
-from google.cloud import bigquery
+
+if TYPE_CHECKING:
+    from google.cloud import bigquery
 
 from lightning import LightningModule, Trainer
 from lightning.pytorch.callbacks import BasePredictionWriter
@@ -25,7 +27,7 @@ class BaseBufferedWriter(BasePredictionWriter):
         # Update this based on data size. The goal is to limit the number of writes to BQ without exceeding the memory of your machine.
         flush_frequency: int = 5000,
         write_interval: str = "batch",
-        schema: Optional[List[Union[bigquery.SchemaField, pa.Field]]] = None,
+        schema: Optional[List[Union["bigquery.SchemaField", pa.Field]]] = None,
         prediction_key_name: Optional[str] = None,
         prediction_name: Optional[str] = None,
     ):

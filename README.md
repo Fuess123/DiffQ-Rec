@@ -58,7 +58,9 @@ python -m src.inference experiment=sem_embeds_inference_flat data_dir=data/amazo
 
 ### 3. Train and Generate Semantic IDs
 
-Learn semantic ID centroids for embeddings generated in step 2:
+Learn semantic ID centroids for embeddings generated in step 2. You can choose from different quantization methods:
+
+#### Option A: Residual K-means (RQ-KMeans)
 
 ```bash
 python -m src.train experiment=rkmeans_train_flat \
@@ -79,6 +81,31 @@ python -m src.inference experiment=rkmeans_inference_flat \
     num_hierarchies=3 \  
     codebook_width=256 \ 
     ckpt_path=<the_checkpoint_you_just_get_above> # this can be found in the log dir for training SIDs
+```
+
+#### Option B: VQ-VAE (Vector Quantized Variational Autoencoder)
+
+VQ-VAE uses a single-layer quantization with encoder-decoder architecture, providing a simpler alternative to multi-layer residual quantization:
+
+```bash
+python -m src.train experiment=vqvae_train_flat \
+    data_dir=data/amazon_data/beauty \
+    embedding_path=<output_path_from_step_2>/merged_predictions_tensor.pt \
+    embedding_dim=2048 \
+    num_embeddings=512 \  # codebook size
+    embedding_dim_latent=64  # latent space dimension
+```
+
+Generate SIDs:
+
+```bash
+python -m src.inference experiment=vqvae_inference_flat \
+    data_dir=data/amazon_data/beauty \
+    embedding_path=<output_path_from_step_2>/merged_predictions_tensor.pt \
+    embedding_dim=2048 \
+    num_embeddings=512 \
+    embedding_dim_latent=64 \
+    ckpt_path=<the_checkpoint_you_just_get_above>
 ```
 
 
@@ -111,7 +138,8 @@ python -m src.inference experiment=tiger_inference_flat \
 
 1. Residual K-means proposed in One-Rec [2]
 2. Residual Vector Quantization
-3. Residual Quantization with Variational Autoencoder [3]
+3. Residual Quantization with Variational Autoencoder (RQ-VAE) [3]
+4. Vector Quantized Variational Autoencoder (VQ-VAE) - Single-layer quantization with encoder-decoder architecture
 
 ### Generative Recommendation:
 

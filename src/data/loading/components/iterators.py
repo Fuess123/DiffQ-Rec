@@ -132,17 +132,83 @@ class TFRecordIterator(RawDataIterator):
         If the feature description is not set, infer the feature description from the first record in the dataset.
         """
         if self.feature_description is None:
-            sample_record: tf.Tensor = next(iter(raw_dataset))  # type: ignore
-
-            self.feature_description = self.infer_feature_type(
-                self.parse_tfrecord(sample_record).features.feature  # type: ignore
-            )
+            # Use TensorFlow's ignore_errors to skip problematic records during iteration
+            # This will help us find a valid record even if some records have encoding issues
+            try:
+                # Wrap dataset with ignore_errors to skip records that cause exceptions
+                # This is a workaround for UnicodeDecodeError in TensorFlow's C++ layer
+                dataset_with_error_handling = raw_dataset.apply(
+                    tf.data.experimental.ignore_errors()
+                )
+                
+                dataset_iterator = iter(dataset_with_error_handling)
+                sample_record = None
+                max_retries = 1000  # Try up to 1000 records to find a valid one
+                last_exception = None
+                attempt_count = 0
+                
+                for attempt in range(max_retries):
+                    try:
+                        attempt_count += 1
+                        sample_record = next(dataset_iterator)  # type: ignore
+                        # Try to parse the record to check if it's valid
+                        try:
+                            parsed_example = self.parse_tfrecord(sample_record)
+                            # If we get here, the record is valid
+                            break
+                        except Exception as parse_error:
+                            # If parsing fails, try the next record
+                            last_exception = parse_error
+                            sample_record = None
+                            continue
+                    except StopIteration:
+                        # No more records available
+                        break
+                    except Exception as e:
+                        # Catch all exceptions and try the next record
+                        last_exception = e
+                        continue
+                
+                if sample_record is None:
+                    # If we couldn't find a valid record, provide detailed error message
+                    error_msg = (
+                        f"Could not find a valid record to infer feature description "
+                        f"after {attempt_count} attempts. "
+                    )
+                    if last_exception:
+                        error_msg += f"Last error: {type(last_exception).__name__}: {str(last_exception)[:200]}"
+                    raise ValueError(error_msg)
+                
+                # Parse the valid record to get feature description
+                try:
+                    self.feature_description = self.infer_feature_type(
+                        self.parse_tfrecord(sample_record).features.feature  # type: ignore
+                    )
+                except Exception as e:
+                    # If parsing fails even after finding a record, raise with context
+                    raise ValueError(
+                        f"Failed to parse sample record for feature description: {type(e).__name__}: {str(e)}"
+                    ) from e
+            except Exception as e:
+                # If we can't even iterate the dataset, provide helpful error message
+                raise ValueError(
+                    f"Failed to initialize feature description from dataset: {type(e).__name__}: {str(e)}"
+                ) from e
 
     def iterrows(self):
         assert self.list_of_file_paths is not None, "list_of_file_paths is not set"
+        # Create dataset with error handling
+        # Use num_parallel_reads=1 to avoid issues with parallel reading
+        # Wrap with ignore_errors to skip records that cause encoding issues
         raw_dataset = tf.data.TFRecordDataset(
-            [self.list_of_file_paths], compression_type="GZIP"
+            [self.list_of_file_paths], 
+            compression_type="GZIP",
+            num_parallel_reads=1  # Use single-threaded reading to avoid encoding issues
         )
+        
+        # Apply ignore_errors to skip problematic records at the TensorFlow level
+        raw_dataset = raw_dataset.apply(tf.data.experimental.ignore_errors())
+        
         if self.should_shuffle_rows:
             # the buffer here is the number of records to shuffle
             # the larger the buffer, the more memory it will use
@@ -155,15 +221,33 @@ class TFRecordIterator(RawDataIterator):
         dataset_iterator = iter(raw_dataset)
         curr_example = self._get_next_example(dataset_iterator)
         while curr_example:
-            example = tf.io.parse_single_example(curr_example, self.feature_description)
-            yield example
+            try:
+                example = tf.io.parse_single_example(curr_example, self.feature_description)
+                yield example
+            except (UnicodeDecodeError, RuntimeError) as e:
+                # Skip records that can't be decoded properly
+                # This can happen if the record contains non-UTF-8 strings
+                if isinstance(e, UnicodeDecodeError):
+                    # Try to continue with the next record
+                    curr_example = self._get_next_example(dataset_iterator)
+                    continue
+                else:
+                    # For other RuntimeErrors, re-raise
+                    raise
             curr_example = self._get_next_example(dataset_iterator)
 
     def iter_batches(self, batch_size: int) -> Dict[str, tf.Tensor]:  # type: ignore
         assert self.list_of_file_paths is not None, "list_of_file_paths is not set"
+        # Create dataset with error handling
+        # Use num_parallel_reads=1 to avoid issues with parallel reading
         raw_dataset = tf.data.TFRecordDataset(
-            self.list_of_file_paths, compression_type="GZIP"
+            self.list_of_file_paths, 
+            compression_type="GZIP",
+            num_parallel_reads=1  # Use single-threaded reading to avoid encoding issues
         )
+        
+        # Apply ignore_errors to skip problematic records at the TensorFlow level
+        raw_dataset = raw_dataset.apply(tf.data.experimental.ignore_errors())
 
         if self.should_shuffle_rows:
             # the buffer here is the number of records to shuffle
@@ -189,8 +273,19 @@ class TFRecordIterator(RawDataIterator):
         curr_batch = self._get_next_example(dataset_iterator)
 
         while curr_batch is not None:
-            example = tf.io.parse_example(curr_batch, self.feature_description)
-            yield example
+            try:
+                example = tf.io.parse_example(curr_batch, self.feature_description)
+                yield example
+            except (UnicodeDecodeError, RuntimeError) as e:
+                # Skip batches that can't be decoded properly
+                # This can happen if the batch contains non-UTF-8 strings
+                if isinstance(e, UnicodeDecodeError):
+                    # Try to continue with the next batch
+                    curr_batch = self._get_next_example(dataset_iterator)
+                    continue
+                else:
+                    # For other RuntimeErrors, re-raise
+                    raise
             curr_batch = self._get_next_example(dataset_iterator)
 
     # dynamic inferring the feature description of tfrecord files
