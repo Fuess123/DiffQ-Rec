@@ -53,10 +53,7 @@ trainer:
   max_steps: 80000
   max_epochs: 10
   accelerator: gpu
-  # Flan-T5-XL 极大；devices=-1 会在每张卡上各起一份 DDP 进程，共享集群上极易 OOM。
-  # 单卡推理更安全；多卡请显式覆盖 trainer.devices 并确保每张卡空闲显存充足。
-  devices: 1
-  strategy: auto
+  devices: -1
   num_nodes: 1
   precision: 32
   log_every_n_steps: 2500
@@ -146,15 +143,13 @@ data_loading:
         _partial_: true
       data_folder: ${paths.data_dir}/items
       should_shuffle_rows: false
-      batch_size_per_device: 4
-      # 推理结束时常在「合并完成后」卡在 DataLoader 子进程回收（IterableDataset + persistent_workers）。
-      # 单进程 num_workers=0 可避免多数 Linux 环境下的无响应挂起。
-      num_workers: 0
+      batch_size_per_device: 8
+      num_workers: 2
       assign_files_by_size: true
       timeout: 60
       drop_last: false
       pin_memory: false
-      persistent_workers: false
+      persistent_workers: true
       collate_fn:
         _target_: src.data.loading.components.collate_functions.collate_fn_items
         _partial_: true

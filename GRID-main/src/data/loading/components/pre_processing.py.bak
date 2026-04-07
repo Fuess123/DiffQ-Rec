@@ -14,43 +14,16 @@ from src.utils.utils import load_tokenize
 
 # support functions
 
-
-def _numpy_array_bytes_to_utf8_strings(arr: np.ndarray) -> np.ndarray:
-    """Decode TFRecord byte features to Python str without assuming ASCII."""
-    if arr.dtype.kind == "U":
-        return arr
-    if arr.dtype.kind == "S":
-        return np.char.decode(arr, encoding="utf-8", errors="replace")
-    if arr.dtype == object:
-        out = np.empty_like(arr, dtype=object)
-
-        def decode_one(val: Any) -> Any:
-            if isinstance(val, (bytes, bytearray, memoryview)):
-                return bytes(val).decode("utf-8", errors="replace")
-            if isinstance(val, str):
-                return val
-            return val
-
-        for idx in np.ndindex(arr.shape):
-            out[idx] = decode_one(arr[idx])
-        return out
-    if arr.ndim == 0 and isinstance(arr.item(), (bytes, bytearray)):
-        return np.array(
-            bytes(arr.item()).decode("utf-8", errors="replace"), dtype=object
-        )
-    return arr.astype(str)
-
-
 def convert_bytes_to_string(
     batch_or_row: Dict[str, np.ndarray],
     dataset_config: BaseDatasetConfig,
     features_to_apply: Optional[List[str]] = [],
     **kwargs,
 ) -> Dict[str, np.ndarray]:
-    # For each feature to apply, cast its np.ndarray of bytes to string (UTF-8, not ASCII).
+    # For each feature to apply, cast its np.ndarray of bytes to string.
     for k in batch_or_row:
         if is_feature_in_features_to_apply(features_to_apply, k):
-            batch_or_row[k] = _numpy_array_bytes_to_utf8_strings(batch_or_row[k])
+            batch_or_row[k] = batch_or_row[k].astype(str)
     return batch_or_row
 
 def is_feature_in_features_to_apply(features_to_apply: List[str], k: str) -> bool:
