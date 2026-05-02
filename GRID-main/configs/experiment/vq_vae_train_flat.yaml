@@ -89,7 +89,10 @@ model:
   _target_: src.modules.clustering.vq_vae_quantization.VQVAEQuantization
   input_dim: ${embedding_dim}
   codebook_width: ${codebook_width}
+  num_hierarchies: ${num_hierarchies}
   commitment_cost: 0.25
+  morph_loss_weight: 0.1
+  morph_temperature: 1.0
   lr: 0.001
 
 callbacks:
