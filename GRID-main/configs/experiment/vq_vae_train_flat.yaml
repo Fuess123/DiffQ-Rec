@@ -93,6 +93,9 @@ model:
   commitment_cost: 0.25
   morph_loss_weight: 0.1
   morph_temperature: 1.0
+  modal_teacher_embedding_path: null
+  modal_loss_weight: 0.0
+  modal_temperature: 1.0
   lr: 0.001
 
 callbacks:
