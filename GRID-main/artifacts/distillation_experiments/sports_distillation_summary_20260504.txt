@@ -292,3 +292,56 @@ col3 unique=1660, min=0, max=1659
 Observation:
 Morph+modal slightly increases the suffix-like last column diversity compared with modal-only, but early hierarchy columns remain collapsed.
 Text-neighbor overlap does not improve over modal-only or morph.
+
+12. Offline Recommendation Evaluation: Morph-only vs Morph+Ranking 1000-step
+Evaluation data:
+data/amazon_data/sports/testing
+
+Ground truth:
+target item is the last item in sequence_data.
+
+Evaluation method:
+Generated semantic IDs are mapped back to item ids using the corresponding semantic ID map.
+Unmapped semantic IDs are skipped.
+Metrics are computed over 100000 common users.
+
+Baseline teacher:
+pred_pkl=logs/inference/runs/2026-05-04/11-33-06/pickle/merged_predictions.pkl
+sid_map=logs/inference/runs/2026-05-02/01-31-58/pickle/merged_predictions_tensor.pt
+unmapped=2
+unmapped_ratio=0.000002
+mapped_len_avg=9.99998
+recall@5=0.032850
+recall@10=0.050350
+ndcg@5=0.020049
+ndcg@10=0.025699
+
+Morph-only 1000-step:
+pred_pkl=logs/inference/runs/2026-05-04/23-59-33/pickle/merged_predictions.pkl
+sid_map=logs/inference/runs/2026-05-02/18-00-09/pickle/merged_predictions_tensor.pt
+train_run=logs/train/runs/2026-05-04/21-45-58
+unmapped=15417
+unmapped_ratio=0.015417
+mapped_len_avg=9.84583
+recall@5=0.002930
+recall@10=0.005310
+ndcg@5=0.001376
+ndcg@10=0.002142
+
+Morph+ranking 1000-step:
+pred_pkl=logs/inference/runs/2026-05-04/14-40-46/pickle/merged_predictions.pkl
+sid_map=logs/inference/runs/2026-05-02/18-00-09/pickle/merged_predictions_tensor.pt
+train_run=logs/train/runs/2026-05-04/12-03-05
+unmapped=100000
+unmapped_ratio=0.100000
+mapped_len_avg=9.0
+recall@5=0.002100
+recall@10=0.004970
+ndcg@5=0.001360
+ndcg@10=0.002303
+
+Observation:
+At 1000 steps, morph-only outperforms morph+ranking on recall@5 and recall@10.
+Morph+ranking is only slightly higher on ndcg@10, but it produces many more invalid/unmapped semantic IDs.
+The ranking distillation setup therefore does not provide a clear recommendation benefit in this early-training comparison.
+A future improvement should add constrained decoding or a legality-aware loss to reduce invalid SID generation.
