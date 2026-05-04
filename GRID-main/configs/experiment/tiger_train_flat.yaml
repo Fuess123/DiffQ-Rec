@@ -242,6 +242,7 @@ model:
   ranking_distill_scores_path: null
   ranking_distill_weight: 0.0
   ranking_distill_temperature: 1.0
+  should_check_prefix: false
   mlp_layers: 2
 callbacks:
   model_checkpoint:

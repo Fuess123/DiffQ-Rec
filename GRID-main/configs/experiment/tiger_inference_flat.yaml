@@ -51,6 +51,7 @@ model:
   num_user_bins: null
   codebooks: ${data_loading.predict_dataloader_config.dataloader.dataset_config.semantic_id_map.sequence_data}
   mlp_layers: 2
+  should_check_prefix: false
   top_k_for_generation: 10
 task_name: inference
 id: ${now:%Y-%m-%d}/${now:%H-%M-%S}

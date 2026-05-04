@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Set, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -76,6 +76,28 @@ class SemanticIDGenerativeRecommender(TransformerBaseModule):
             )
 
         self.top_k_for_generation = top_k_for_generation
+        self.valid_next_token_map = self._build_valid_next_token_map()
+
+    def _build_valid_next_token_map(self) -> Dict[Tuple[int, ...], torch.Tensor]:
+        """Build a prefix -> valid next-token mask lookup table from cached codebooks."""
+        if self.codebooks is None:
+            return {}
+
+        prefix_to_tokens: Dict[Tuple[int, ...], Set[int]] = {}
+        codebooks_cpu = self.codebooks.detach().cpu().long()
+        for row in codebooks_cpu:
+            item = row.tolist()
+            for depth in range(self.num_hierarchies):
+                prefix = tuple(item[:depth])
+                prefix_to_tokens.setdefault(prefix, set()).add(int(item[depth]))
+
+        prefix_to_mask: Dict[Tuple[int, ...], torch.Tensor] = {}
+        for prefix, tokens in prefix_to_tokens.items():
+            mask = torch.zeros(self.num_embeddings_per_hierarchy, dtype=torch.bool)
+            mask[list(tokens)] = True
+            prefix_to_mask[prefix] = mask
+
+        return prefix_to_mask
 
     def _inject_sep_token_between_sids(
         self,
@@ -251,6 +273,33 @@ class SemanticIDGenerativeRecommender(TransformerBaseModule):
         # Concatenate the results from all batches.
         return torch.cat(results)
 
+    def _get_valid_next_token_mask(
+        self,
+        generated_ids: Union[torch.Tensor, None],
+        hierarchy: int,
+        batch_size: int,
+        device: torch.device,
+    ) -> torch.Tensor:
+        """Return a boolean mask whose true entries are legal next SID tokens."""
+        if generated_ids is None:
+            root_mask = self.valid_next_token_map.get(())
+            if root_mask is None:
+                return torch.zeros(
+                    batch_size,
+                    self.num_embeddings_per_hierarchy,
+                    dtype=torch.bool,
+                    device=device,
+                )
+            return root_mask.unsqueeze(0).expand(batch_size, -1).to(device)
+
+        prefixes = generated_ids.reshape(-1, hierarchy).detach().cpu().long().tolist()
+        empty_mask = torch.zeros(self.num_embeddings_per_hierarchy, dtype=torch.bool)
+        masks = [
+            self.valid_next_token_map.get(tuple(prefix_values), empty_mask)
+            for prefix_values in prefixes
+        ]
+        return torch.stack(masks, dim=0).to(device)
+
     def _beam_search_one_step(
         self,
         candidate_logits: torch.Tensor,
@@ -277,32 +326,12 @@ class SemanticIDGenerativeRecommender(TransformerBaseModule):
 
         # pruning the beams that cannot be mapped to a valid item
         if self.should_check_prefix:
-            if generated_ids is None:
-                valid_prefix_mask = self._check_valid_prefix(
-                    torch.arange(
-                        self.num_embeddings_per_hierarchy,
-                        device=candidate_logits.device,
-                    ).unsqueeze(1)
-                )
-                candidate_logits[:, ~valid_prefix_mask] = float("-inf")
-            else:
-                # we prune all beams with prefixes that cannot be mapped to a valid item
-                valid_prefix_mask = self._check_valid_prefix(
-                    torch.cat(
-                        [
-                            generated_ids.reshape(-1, hierarchy).repeat_interleave(
-                                self.num_embeddings_per_hierarchy, dim=0
-                            ),
-                            torch.arange(
-                                self.num_embeddings_per_hierarchy,
-                                device=candidate_logits.device,
-                            )
-                            .repeat(self.top_k_for_generation * batch_size)
-                            .unsqueeze(1),
-                        ],
-                        dim=1,
-                    )
-                ).reshape(-1, self.num_embeddings_per_hierarchy)
+            valid_prefix_mask = self._get_valid_next_token_mask(
+                generated_ids=generated_ids,
+                hierarchy=hierarchy,
+                batch_size=batch_size,
+                device=candidate_logits.device,
+            )
             candidate_logits[~valid_prefix_mask] = float("-inf")
 
         candidate_logits = torch.nn.functional.softmax(candidate_logits, dim=-1)
