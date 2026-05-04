@@ -202,3 +202,42 @@ The real text modal teacher was successfully constructed and used for VQ-VAE tra
 The modal-only SID distribution is highly collapsed in early hierarchy columns:
 col0 unique=1, col1 unique=1, col2 unique=42, col3 unique=1554.
 This suggests that the current modal-only setup mostly uses the suffix/code collision dimension for uniqueness rather than distributing text semantics across the hierarchy.
+
+8. Text-neighbor Overlap Analysis for Baseline, Morph, Modal, and Morph+Modal Semantic IDs
+Text teacher:
+artifacts/modal_teacher/sports_text_teacher_all_minilm_l6_v2.pt
+
+Semantic ID sources:
+baseline=logs/inference/runs/2026-05-02/01-31-58/pickle/merged_predictions_tensor.pt
+morph=logs/inference/runs/2026-05-02/18-00-09/pickle/merged_predictions_tensor.pt
+modal=logs/inference/runs/2026-05-04/17-38-38/pickle/merged_predictions_tensor.pt
+morph_modal=logs/inference/runs/2026-05-04/21-12-08/pickle/merged_predictions_tensor.pt
+
+SID column distributions:
+baseline: col0 unique=1, col1 unique=248, col2 unique=220, col3 unique=30
+morph: col0 unique=1, col1 unique=178, col2 unique=189, col3 unique=29
+modal: col0 unique=1, col1 unique=1, col2 unique=42, col3 unique=1554
+morph_modal: col0 unique=1, col1 unique=1, col2 unique=42, col3 unique=1660
+
+Text-neighbor overlap results:
+baseline text_overlap@10=0.010051
+baseline text_overlap@20=0.015756
+baseline text_overlap@50=0.025378
+
+morph text_overlap@10=0.010902
+morph text_overlap@20=0.017235
+morph text_overlap@50=0.027640
+
+modal text_overlap@10=0.002710
+modal text_overlap@20=0.005808
+modal text_overlap@50=0.014803
+
+morph_modal text_overlap@10=0.002710
+morph_modal text_overlap@20=0.005428
+morph_modal text_overlap@50=0.013410
+
+Observation:
+The real text modal teacher was successfully constructed and used for VQ-VAE training, and modal semantic IDs were generated successfully.
+However, under the current 1000-step setup with modal_loss_weight=0.01, both modal-only and morph+modal semantic IDs underperform baseline and morph semantic IDs on text-neighbor overlap.
+The modal and morph+modal SID distributions collapse in early hierarchy columns and mainly use the suffix-like last column for uniqueness.
+This suggests that the current modal distillation setup does not effectively transfer text-neighbor structure into SID Hamming neighborhoods.
