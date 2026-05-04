@@ -174,3 +174,31 @@ model.modal_temperature=1.0
 
 Note:
 Inference completed successfully and merged 19739 rows into merged_predictions_tensor.pt.
+
+8. Text-neighbor Overlap Analysis for Baseline, Morph, and Modal Semantic IDs
+Text teacher:
+artifacts/modal_teacher/sports_text_teacher_all_minilm_l6_v2.pt
+
+Semantic ID sources:
+baseline=logs/inference/runs/2026-05-02/01-31-58/pickle/merged_predictions_tensor.pt
+morph=logs/inference/runs/2026-05-02/18-00-09/pickle/merged_predictions_tensor.pt
+modal=logs/inference/runs/2026-05-04/17-38-38/pickle/merged_predictions_tensor.pt
+
+Results:
+baseline text_overlap@10=0.010051
+baseline text_overlap@20=0.015756
+baseline text_overlap@50=0.025378
+
+morph text_overlap@10=0.010902
+morph text_overlap@20=0.017235
+morph text_overlap@50=0.027640
+
+modal text_overlap@10=0.002710
+modal text_overlap@20=0.005808
+modal text_overlap@50=0.014803
+
+Observation:
+The real text modal teacher was successfully constructed and used for VQ-VAE training, but the 1000-step modal-only semantic IDs underperform baseline and morph IDs on text-neighbor overlap.
+The modal-only SID distribution is highly collapsed in early hierarchy columns:
+col0 unique=1, col1 unique=1, col2 unique=42, col3 unique=1554.
+This suggests that the current modal-only setup mostly uses the suffix/code collision dimension for uniqueness rather than distributing text semantics across the hierarchy.
