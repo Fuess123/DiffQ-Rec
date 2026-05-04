@@ -1,0 +1,91 @@
+Dataset: amazon_data/sports
+
+Branch:
+Fuess
+
+Commit:
+afbdb37 Add morphology modal and ranking distillation
+
+1. Morphology Distillation VQ-VAE
+Checkpoint:
+logs/train/runs/2026-05-02/16-57-09/checkpoints/last.ckpt
+
+Semantic IDs:
+logs/inference/runs/2026-05-02/18-00-09/pickle/merged_predictions_tensor.pt
+
+Configuration:
+num_hierarchies=4
+morph_loss_weight=0.05
+morph_temperature=1.0
+
+Neighbor overlap:
+overlap@10 baseline=0.107167 morph=0.128900 diff=+0.021733
+overlap@20 baseline=0.144450 morph=0.166200 diff=+0.021750
+overlap@50 baseline=0.171360 morph=0.202380 diff=+0.031020
+
+2. Modal Distillation
+Status:
+Implemented interface and passed smoke test.
+
+Interface:
+model.modal_teacher_embedding_path
+model.modal_loss_weight
+model.modal_temperature
+
+Smoke test metrics:
+train/modal_loss=0.9911
+train/quantized_modal_loss=1.0003
+
+Note:
+No external real modal teacher embedding has been used yet.
+
+3. Ranking Distillation
+Teacher checkpoint:
+logs/train/runs/2026-05-02/01-53-31/checkpoints/checkpoint_epoch=000_step=014600.ckpt
+
+Teacher inference output:
+logs/inference/runs/2026-05-04/11-33-06/pickle/merged_predictions.pkl
+
+Teacher distillation artifacts:
+artifacts/ranking_distill_tiger_teacher/sports_teacher_candidates.pt
+artifacts/ranking_distill_tiger_teacher/sports_teacher_scores.pt
+artifacts/ranking_distill_tiger_teacher/sports_teacher_valid_mask.pt
+
+Student semantic IDs:
+logs/inference/runs/2026-05-02/18-00-09/pickle/merged_predictions_tensor.pt
+
+100-step smoke train:
+train/ranking_distill_loss_epoch=1.8841
+train/loss_epoch=12.6743
+
+1000-step mini train:
+Run:
+logs/train/runs/2026-05-04/12-03-05
+
+Checkpoint:
+logs/train/runs/2026-05-04/12-03-05/checkpoints/checkpoint_epoch=000_step=001000.ckpt
+
+Configuration:
+trainer.max_steps=1000
+trainer.accumulate_grad_batches=1
+model.ranking_distill_weight=0.01
+model.ranking_distill_temperature=1.0
+
+1000-step train metrics:
+train/loss=11.8505
+train/loss_step=11.4770
+train/ranking_distill_loss=1.9040
+train/ranking_distill_loss_step=1.8784
+train/ranking_distill_loss_epoch=1.9040
+
+1000-step validation metrics:
+val/loss=11.4256
+val/recall@5=0.0028
+val/recall@10=0.0043
+val/ndcg@5=0.0018
+val/ndcg@10=0.0023
+
+Notes:
+- Ranking distillation uses baseline TIGER teacher generated semantic IDs.
+- Teacher baseline semantic IDs are mapped to item indices, then remapped to morph semantic IDs for student training.
+- The .pt teacher artifacts are intentionally not committed unless Git LFS is configured.
