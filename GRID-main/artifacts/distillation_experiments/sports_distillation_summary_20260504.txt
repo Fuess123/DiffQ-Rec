@@ -241,3 +241,54 @@ The real text modal teacher was successfully constructed and used for VQ-VAE tra
 However, under the current 1000-step setup with modal_loss_weight=0.01, both modal-only and morph+modal semantic IDs underperform baseline and morph semantic IDs on text-neighbor overlap.
 The modal and morph+modal SID distributions collapse in early hierarchy columns and mainly use the suffix-like last column for uniqueness.
 This suggests that the current modal distillation setup does not effectively transfer text-neighbor structure into SID Hamming neighborhoods.
+
+9. Real Text Modal Teacher Morph+Modal VQ-VAE 1000-step Mini Train and Inference
+Train run:
+logs/train/runs/2026-05-04/18-21-32
+
+Train checkpoint:
+logs/train/runs/2026-05-04/18-21-32/checkpoints/checkpoint_000_001000.ckpt
+
+Train configuration:
+embedding_path=logs/inference/runs/2026-03-28/17-49-36/pickle/merged_predictions_tensor.pt
+embedding_dim=2048
+num_hierarchies=3
+codebook_width=256
+model.morph_loss_weight=0.05
+model.morph_temperature=1.0
+model.modal_teacher_embedding_path=artifacts/modal_teacher/sports_text_teacher_all_minilm_l6_v2.pt
+model.modal_loss_weight=0.01
+model.modal_temperature=1.0
+trainer.max_steps=1000
+trainer.accumulate_grad_batches=1
+
+1000-step train metrics:
+train/loss=0.0106
+train/recon_loss=0.0037
+train/vq_loss=0.0026
+train/morph_loss=0.0292
+train/modal_loss=0.2851
+train/quantized_morph_loss=0.0298
+train/quantized_modal_loss=0.3622
+train/unique_sid_ratio=0.0742
+
+Inference run:
+logs/inference/runs/2026-05-04/21-12-08
+
+Inference outputs:
+logs/inference/runs/2026-05-04/21-12-08/pickle/merged_predictions.pkl
+logs/inference/runs/2026-05-04/21-12-08/pickle/merged_predictions_tensor.pt
+
+Inferred SID statistics:
+raw shape=[4, 19739]
+normalized shape=[19739, 4]
+unique semantic ids=19739
+unique ratio=1.0
+col0 unique=1, min=143, max=143
+col1 unique=1, min=47, max=47
+col2 unique=42, min=3, max=249
+col3 unique=1660, min=0, max=1659
+
+Observation:
+Morph+modal slightly increases the suffix-like last column diversity compared with modal-only, but early hierarchy columns remain collapsed.
+Text-neighbor overlap does not improve over modal-only or morph.
