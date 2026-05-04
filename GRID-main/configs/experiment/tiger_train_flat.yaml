@@ -238,6 +238,10 @@ model:
   num_hierarchies: ${num_hierarchies}
   num_user_bins: null
   codebooks: ${data_loading.train_dataloader_config.dataloader.dataset_config.semantic_id_map.sequence_data}
+  ranking_distill_candidates_path: null
+  ranking_distill_scores_path: null
+  ranking_distill_weight: 0.0
+  ranking_distill_temperature: 1.0
   mlp_layers: 2
 callbacks:
   model_checkpoint:

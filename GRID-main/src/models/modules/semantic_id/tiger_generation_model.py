@@ -2,6 +2,7 @@ import logging
 from typing import Any, Optional, Tuple, Union
 
 import torch
+import torch.nn.functional as F
 import transformers
 from torch import nn
 from torchmetrics.aggregation import BaseAggregator
@@ -477,6 +478,10 @@ class SemanticIDEncoderDecoder(SemanticIDGenerativeRecommender):
         should_add_sep_token: bool = True,
         prediction_key_name: str = "user_id",
         prediction_value_name: str = "semantic_ids",
+        ranking_distill_candidates_path: Optional[str] = None,
+        ranking_distill_scores_path: Optional[str] = None,
+        ranking_distill_weight: float = 0.0,
+        ranking_distill_temperature: float = 1.0,
         **kwargs,
     ) -> None:
         """
@@ -580,6 +585,28 @@ class SemanticIDEncoderDecoder(SemanticIDGenerativeRecommender):
         # the key value names for the prediction output
         self.prediction_key_name = prediction_key_name
         self.prediction_value_name = prediction_value_name
+        self.ranking_distill_weight = ranking_distill_weight
+        self.ranking_distill_temperature = ranking_distill_temperature
+        self.register_buffer(
+            "ranking_distill_candidates",
+            self._load_ranking_distill_tensor(ranking_distill_candidates_path, dtype=torch.long),
+            persistent=False,
+        )
+        self.register_buffer(
+            "ranking_distill_scores",
+            self._load_ranking_distill_tensor(ranking_distill_scores_path, dtype=torch.float),
+            persistent=False,
+        )
+
+
+    @staticmethod
+    def _load_ranking_distill_tensor(path: Optional[str], dtype: torch.dtype) -> Optional[torch.Tensor]:
+        if path is None or path == "" or str(path).lower() == "none":
+            return None
+        tensor = torch.load(path, map_location="cpu")
+        if not isinstance(tensor, torch.Tensor):
+            raise TypeError(f"ranking distillation file must contain a torch.Tensor, got {type(tensor)}")
+        return tensor.to(dtype=dtype).contiguous()
 
     def encoder_forward_pass(
         self,
@@ -943,14 +970,75 @@ class SemanticIDEncoderDecoder(SemanticIDGenerativeRecommender):
 
         # the label locations is shared for all semantic id hierarchies
         loss = 0
+        hierarchy_logits = []
         for hierarchy in range(self.num_hierarchies):
 
             input = self.decoder.decoder_mlp[hierarchy](model_output[:, hierarchy])
+            hierarchy_logits.append(input)
             loss += self.loss_function(
                 input=input,
                 target=fut_ids[:, hierarchy].long(),
             )
+
+        ranking_distill_loss = self._ranking_distillation_loss(
+            model_input=model_input,
+            hierarchy_logits=hierarchy_logits,
+        )
+        loss = loss + getattr(self, "ranking_distill_weight", 0.0) * ranking_distill_loss
+        if getattr(self, "ranking_distill_weight", 0.0) > 0:
+            self.log(
+                "train/ranking_distill_loss",
+                ranking_distill_loss,
+                on_step=True,
+                on_epoch=True,
+                prog_bar=True,
+                logger=True,
+                sync_dist=True,
+            )
         return model_output, loss
+
+    def _ranking_distillation_loss(
+        self,
+        model_input: SequentialModelInputData,
+        hierarchy_logits: list[torch.Tensor],
+    ) -> torch.Tensor:
+        if (
+            getattr(self, "ranking_distill_weight", 0.0) <= 0
+            or getattr(self, "ranking_distill_candidates", None) is None
+            or getattr(self, "ranking_distill_scores", None) is None
+        ):
+            return hierarchy_logits[0].new_tensor(0.0)
+
+        user_ids = model_input.transformed_sequences.get("user_id", None)
+        if user_ids is None:
+            return hierarchy_logits[0].new_tensor(0.0)
+
+        user_ids = user_ids[:, 0].long().to(hierarchy_logits[0].device)
+        if user_ids.max() >= self.ranking_distill_candidates.shape[0] or user_ids.min() < 0:
+            raise IndexError(
+                f"user_ids out of ranking distillation range: "
+                f"min={user_ids.min().item()}, max={user_ids.max().item()}, "
+                f"num_users={self.ranking_distill_candidates.shape[0]}"
+            )
+
+        candidate_sids = self.ranking_distill_candidates[user_ids].to(hierarchy_logits[0].device)
+        teacher_scores = self.ranking_distill_scores[user_ids].to(hierarchy_logits[0].device)
+        if candidate_sids.dim() != 3 or candidate_sids.shape[-1] != self.num_hierarchies:
+            raise ValueError(
+                f"ranking distillation candidates must have shape [num_users, top_k, {self.num_hierarchies}], "
+                f"got {candidate_sids.shape}"
+            )
+
+        student_log_probs = []
+        for hierarchy, logits in enumerate(hierarchy_logits):
+            log_probs = F.log_softmax(logits / self.ranking_distill_temperature, dim=-1)
+            student_log_probs.append(
+                log_probs.gather(1, candidate_sids[:, :, hierarchy].long()).unsqueeze(-1)
+            )
+        student_log_probs = torch.cat(student_log_probs, dim=-1).sum(dim=-1)
+        student_log_distribution = F.log_softmax(student_log_probs, dim=-1)
+        teacher_distribution = F.softmax(teacher_scores / self.ranking_distill_temperature, dim=-1)
+        return F.kl_div(student_log_distribution, teacher_distribution, reduction="batchmean")
 
 
 class SemanticIDDecoderModule(torch.nn.Module):
