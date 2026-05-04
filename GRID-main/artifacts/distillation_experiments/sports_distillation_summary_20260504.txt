@@ -89,3 +89,36 @@ Notes:
 - Ranking distillation uses baseline TIGER teacher generated semantic IDs.
 - Teacher baseline semantic IDs are mapped to item indices, then remapped to morph semantic IDs for student training.
 - The .pt teacher artifacts are intentionally not committed unless Git LFS is configured.
+
+4. Morph + Ranking Distillation 1000-step Inference
+Checkpoint:
+logs/train/runs/2026-05-04/12-03-05/checkpoints/checkpoint_epoch=000_step=001000.ckpt
+
+Inference output:
+logs/inference/runs/2026-05-04/14-40-46/pickle/merged_predictions.pkl
+
+Output structure:
+list length=100000
+each record contains:
+- user_id
+- semantic_ids: top-10 generated morph semantic IDs
+
+Example:
+user_id=70001
+semantic_ids=[
+  [143, 81, 163, 2],
+  [143, 55, 163, 2],
+  [143, 81, 163, 1],
+  [143, 158, 163, 2],
+  [143, 81, 163, 4],
+  [143, 81, 163, 5],
+  [143, 55, 163, 1],
+  [143, 81, 163, 0],
+  [143, 81, 163, 8],
+  [143, 81, 163, 7]
+]
+
+Note:
+Inference produced merged_predictions.pkl successfully.
+The final tensor merge raised IndexError because user_id max is 100000 while tensor merge allocated 100000 rows.
+The pkl output is valid and usable.
