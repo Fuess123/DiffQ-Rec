@@ -151,3 +151,26 @@ train/modal_loss=0.2863
 train/quantized_morph_loss=0.0
 train/quantized_modal_loss=0.3567
 train/unique_sid_ratio=0.0723
+
+7. Real Text Modal Teacher Modal-only VQ-VAE Semantic ID Inference
+Run:
+logs/inference/runs/2026-05-04/17-38-38
+
+Checkpoint:
+logs/train/runs/2026-05-04/17-18-20/checkpoints/checkpoint_000_001000.ckpt
+
+Inference outputs:
+logs/inference/runs/2026-05-04/17-38-38/pickle/merged_predictions.pkl
+logs/inference/runs/2026-05-04/17-38-38/pickle/merged_predictions_tensor.pt
+
+Configuration:
+embedding_path=logs/inference/runs/2026-03-28/17-49-36/pickle/merged_predictions_tensor.pt
+embedding_dim=2048
+num_hierarchies=3
+codebook_width=256
+model.modal_teacher_embedding_path=artifacts/modal_teacher/sports_text_teacher_all_minilm_l6_v2.pt
+model.modal_loss_weight=0.01
+model.modal_temperature=1.0
+
+Note:
+Inference completed successfully and merged 19739 rows into merged_predictions_tensor.pt.
