@@ -345,3 +345,60 @@ At 1000 steps, morph-only outperforms morph+ranking on recall@5 and recall@10.
 Morph+ranking is only slightly higher on ndcg@10, but it produces many more invalid/unmapped semantic IDs.
 The ranking distillation setup therefore does not provide a clear recommendation benefit in this early-training comparison.
 A future improvement should add constrained decoding or a legality-aware loss to reduce invalid SID generation.
+
+13. Legal SID Constrained Decoding for Morph+Ranking TIGER
+Code change:
+Added legal SID constrained decoding to TIGER generation.
+When model.should_check_prefix=true, beam search only allows next tokens that keep the generated prefix inside the semantic ID map.
+
+Implementation:
+A prefix-to-valid-next-token boolean mask is built from codebooks at model initialization.
+During beam search, candidate logits outside the legal next-token mask are set to -inf.
+A fast precomputed-mask implementation is used to avoid slow per-token GPU copies.
+
+Inference run:
+logs/inference/runs/2026-05-05/01-22-08
+
+Checkpoint:
+logs/train/runs/2026-05-04/12-03-05/checkpoints/checkpoint_epoch=000_step=001000.ckpt
+
+SID map:
+logs/inference/runs/2026-05-02/18-00-09/pickle/merged_predictions_tensor.pt
+
+Command key override:
+model.should_check_prefix=true
+
+Offline evaluation:
+data/amazon_data/sports/testing
+target item is the last item in sequence_data.
+Metrics are computed over 100000 common users.
+
+Morph+ranking 1000-step unconstrained:
+pred_pkl=logs/inference/runs/2026-05-04/14-40-46/pickle/merged_predictions.pkl
+unmapped=100000
+unmapped_ratio=0.100000
+mapped_len_avg=9.0
+recall@5=0.002100
+recall@10=0.004970
+ndcg@5=0.001360
+ndcg@10=0.002303
+
+Morph+ranking 1000-step constrained:
+pred_pkl=logs/inference/runs/2026-05-05/01-22-08/pickle/merged_predictions.pkl
+unmapped=0
+unmapped_ratio=0.000000
+mapped_len_avg=10.0
+recall@5=0.002140
+recall@10=0.005590
+ndcg@5=0.001375
+ndcg@10=0.002469
+
+Comparison with morph-only 1000-step:
+morph-only recall@5=0.002930, recall@10=0.005310, ndcg@5=0.001376, ndcg@10=0.002142, unmapped_ratio=0.015417
+morph+ranking constrained recall@5=0.002140, recall@10=0.005590, ndcg@5=0.001375, ndcg@10=0.002469, unmapped_ratio=0.000000
+
+Observation:
+Legal SID constrained decoding completely removes invalid/unmapped semantic IDs for morph+ranking inference.
+It improves recall@10 and ndcg@10 compared with unconstrained morph+ranking.
+Compared with morph-only, constrained morph+ranking is still lower on recall@5, but higher on recall@10 and ndcg@10.
+This suggests ranking distillation mainly helps broader top-10 ranking quality, while constrained decoding is required to realize the benefit.
