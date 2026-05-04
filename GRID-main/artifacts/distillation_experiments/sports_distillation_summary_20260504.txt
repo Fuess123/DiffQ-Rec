@@ -122,3 +122,32 @@ Note:
 Inference produced merged_predictions.pkl successfully.
 The final tensor merge raised IndexError because user_id max is 100000 while tensor merge allocated 100000 rows.
 The pkl output is valid and usable.
+
+6. Real Text Modal Teacher Modal-only VQ-VAE 1000-step Mini Train
+Run:
+logs/train/runs/2026-05-04/17-18-20
+
+Checkpoint:
+logs/train/runs/2026-05-04/17-18-20/checkpoints/checkpoint_000_001000.ckpt
+
+Configuration:
+embedding_path=logs/inference/runs/2026-03-28/17-49-36/pickle/merged_predictions_tensor.pt
+embedding_dim=2048
+num_hierarchies=3
+codebook_width=256
+model.morph_loss_weight=0.0
+model.modal_teacher_embedding_path=artifacts/modal_teacher/sports_text_teacher_all_minilm_l6_v2.pt
+model.modal_loss_weight=0.01
+model.modal_temperature=1.0
+trainer.max_steps=1000
+trainer.accumulate_grad_batches=1
+
+1000-step metrics:
+train/loss=0.0054
+train/recon_loss=0.0001
+train/vq_loss=0.0024
+train/morph_loss=0.0
+train/modal_loss=0.2863
+train/quantized_morph_loss=0.0
+train/quantized_modal_loss=0.3567
+train/unique_sid_ratio=0.0723
