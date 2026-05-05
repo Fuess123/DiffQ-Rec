@@ -402,3 +402,63 @@ Legal SID constrained decoding completely removes invalid/unmapped semantic IDs 
 It improves recall@10 and ndcg@10 compared with unconstrained morph+ranking.
 Compared with morph-only, constrained morph+ranking is still lower on recall@5, but higher on recall@10 and ndcg@10.
 This suggests ranking distillation mainly helps broader top-10 ranking quality, while constrained decoding is required to realize the benefit.
+
+17. Strict 5000-step Offline Recommendation Evaluation: Morph-only vs Morph+Ranking with Constrained Decoding
+Evaluation data:
+data/amazon_data/sports/testing
+
+Ground truth:
+target item is the last item in sequence_data.
+
+Evaluation method:
+Generated semantic IDs are mapped back to item ids using the morph semantic ID map.
+Legal SID constrained decoding is enabled for all compared inference outputs.
+Metrics are computed over 100000 users.
+
+Morph-only exact step5000 constrained:
+train_run=logs/train/runs/2026-05-05/01-38-16
+checkpoint=logs/train/runs/2026-05-05/01-38-16/checkpoints/checkpoint_epoch=000_step=005000.ckpt
+pred_pkl=logs/inference/runs/2026-05-05/14-36-12/pickle/merged_predictions.pkl
+unmapped=0
+unmapped_ratio=0.000000
+mapped_len_avg=10.0
+recall@5=0.005520
+recall@10=0.008560
+ndcg@5=0.003427
+ndcg@10=0.004394
+
+Morph+ranking 5000-run top1 step3000 constrained:
+train_run=logs/train/runs/2026-05-05/14-36-00
+checkpoint=logs/train/runs/2026-05-05/14-36-00/checkpoints/checkpoint_epoch=000_step=003000.ckpt
+pred_pkl=logs/inference/runs/2026-05-05/20-03-25/pickle/merged_predictions.pkl
+unmapped=0
+unmapped_ratio=0.000000
+mapped_len_avg=10.0
+recall@5=0.005730
+recall@10=0.008290
+ndcg@5=0.003446
+ndcg@10=0.004264
+
+Morph+ranking exact step5000 constrained:
+train_run=logs/train/runs/2026-05-05/20-22-23
+checkpoint=logs/train/runs/2026-05-05/20-22-23/checkpoints/checkpoint_epoch=000_step=005000.ckpt
+pred_pkl=logs/inference/runs/2026-05-05/22-13-09/pickle/merged_predictions.pkl
+unmapped=0
+unmapped_ratio=0.000000
+mapped_len_avg=10.0
+recall@5=0.005100
+recall@10=0.010610
+ndcg@5=0.003319
+ndcg@10=0.005076
+
+Strict step5000 comparison:
+recall@5: morph-only=0.005520, morph+ranking=0.005100, relative_change=-7.61%
+recall@10: morph-only=0.008560, morph+ranking=0.010610, relative_change=+23.95%
+ndcg@5: morph-only=0.003427, morph+ranking=0.003319, relative_change=-3.15%
+ndcg@10: morph-only=0.004394, morph+ranking=0.005076, relative_change=+15.52%
+
+Observation:
+The strict step5000 comparison confirms that ranking distillation with legal SID constrained decoding provides a clear top-10 recommendation benefit.
+Compared with morph-only step5000, morph+ranking exact step5000 improves recall@10 and ndcg@10 substantially, while slightly reducing recall@5 and ndcg@5.
+All constrained decoding outputs have zero invalid/unmapped semantic IDs.
+The top1 step3000 checkpoint is better for top-5, while the exact step5000 checkpoint is better for top-10.
