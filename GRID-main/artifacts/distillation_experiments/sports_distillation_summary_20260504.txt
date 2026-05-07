@@ -503,3 +503,80 @@ p10_p50_p90=[0.7091979, 0.8289759, 0.8910530]
 Observation:
 The cleaned teacher differs substantially from the previous noisy text teacher while preserving broad semantic alignment.
 This is a suitable teacher for testing whether modal distillation improves after removing user/timestamp/engagement noise.
+
+20. Modal-clean VQ-VAE 1000-step Train, Inference, and Text-overlap Evaluation
+Cleaned teacher:
+artifacts/modal_teacher_cleaned/sports_text_teacher_all_minilm_l6_v2_cleaned.pt
+
+Teacher construction:
+Source item text from data/amazon_data/sports/items.
+Cleaned text keeps title, tags, summary, and visual tag-like content while removing item-id boilerplate, likes/views counts, engagement-count phrases, repeated token spam, and dataset template phrases.
+
+Teacher sanity check:
+shape=[19739, 384]
+norm_mean=1.0
+mean_paired_cosine_old_vs_new=0.8109717
+p10_p50_p90=[0.7091979, 0.8289759, 0.8910530]
+
+Modal-clean train run:
+logs/train/runs/2026-05-07/17-58-41
+
+Checkpoint:
+logs/train/runs/2026-05-07/17-58-41/checkpoints/checkpoint_000_001000.ckpt
+
+Train configuration:
+embedding_path=logs/inference/runs/2026-03-28/17-49-36/pickle/merged_predictions_tensor.pt
+embedding_dim=2048
+num_hierarchies=3
+codebook_width=256
+modal_teacher_embedding_path=artifacts/modal_teacher_cleaned/sports_text_teacher_all_minilm_l6_v2_cleaned.pt
+modal_loss_weight=0.01
+modal_temperature=1.0
+trainer.max_steps=1000
+trainer.accumulate_grad_batches=1
+
+1000-step train metrics:
+train/loss=0.0097
+train/recon_loss=0.0003
+train/vq_loss=0.0028
+train/morph_loss=0.0277
+train/modal_loss=0.3817
+train/quantized_morph_loss=0.0281
+train/quantized_modal_loss=0.5336
+train/unique_sid_ratio=0.0742
+
+Inference run:
+logs/inference/runs/2026-05-07/18-53-53
+
+Inference outputs:
+logs/inference/runs/2026-05-07/18-53-53/pickle/merged_predictions.pkl
+logs/inference/runs/2026-05-07/18-53-53/pickle/merged_predictions_tensor.pt
+
+Inferred SID statistics:
+shape=[19739, 4]
+unique_semantic_ids=19739
+unique_ratio=1.0
+col0_unique=1, value=143
+col1_unique=1, value=166
+col2_unique=47
+col3_unique=1589
+
+Cleaned text teacher reference overlap@50:
+baseline=0.026384
+morph=0.028404
+old_modal=0.013649
+old_morph_modal=0.012307
+modal_clean=0.011736
+
+Old text teacher reference overlap@50:
+baseline=0.025748
+morph=0.028120
+old_modal=0.014803
+modal_clean=0.012318
+
+Observation:
+Cleaned text teacher construction succeeds and changes the text embedding space substantially.
+However, modal-clean VQ-VAE still does not improve text-neighbor overlap.
+It is lower than old modal under both cleaned and old teacher references.
+Therefore, the previous modal failure is not primarily caused by noisy user/timestamp/engagement text.
+The main bottleneck is likely the current modal distillation objective and SID hierarchy collapse.
