@@ -462,3 +462,44 @@ The strict step5000 comparison confirms that ranking distillation with legal SID
 Compared with morph-only step5000, morph+ranking exact step5000 improves recall@10 and ndcg@10 substantially, while slightly reducing recall@5 and ndcg@5.
 All constrained decoding outputs have zero invalid/unmapped semantic IDs.
 The top1 step3000 checkpoint is better for top-5, while the exact step5000 checkpoint is better for top-10.
+
+19. Cleaned Text Modal Teacher Construction
+Source:
+data/amazon_data/sports/items
+
+Item TFRecord format:
+keys=['text', 'embedding', 'id']
+
+Original item text example:
+This video (ID: 1) titled ' Gu long song gaga bad' has tags like Anime. It has received 12000 likes and 414000 views. Summary: ...
+
+Cleaning policy:
+Keep title, tags, summary, and visual tag-like content.
+Remove item-id boilerplate, likes/views counts, engagement-count phrases, repeated token spam, and dataset template phrases.
+
+Cleaned text outputs:
+artifacts/modal_teacher_cleaned/sports_cleaned_item_texts.json
+artifacts/modal_teacher_cleaned/sports_cleaned_item_texts.txt
+
+Cleaned teacher embedding:
+artifacts/modal_teacher_cleaned/sports_text_teacher_all_minilm_l6_v2_cleaned.pt
+
+Embedding model:
+sentence-transformers/all-MiniLM-L6-v2
+
+Teacher shape:
+[19739, 384]
+
+Sanity check against previous text teacher:
+old_shape=[19739, 384]
+new_shape=[19739, 384]
+old_norm_mean=1.0
+new_norm_mean=1.0
+mean_paired_cosine_old_vs_new=0.8109717
+min_paired_cosine=0.2438163
+max_paired_cosine=0.9645106
+p10_p50_p90=[0.7091979, 0.8289759, 0.8910530]
+
+Observation:
+The cleaned teacher differs substantially from the previous noisy text teacher while preserving broad semantic alignment.
+This is a suitable teacher for testing whether modal distillation improves after removing user/timestamp/engagement noise.
