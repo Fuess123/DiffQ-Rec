@@ -71,6 +71,8 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
                 if ckpt_path == "":
                     ckpt_path = None
             if not ckpt_path:
+                ckpt_path = cfg.get("ckpt_path")
+            if not ckpt_path:
                 command_line_logger.warning(
                     "Best checkpoint not found! Using current weights for testing..."
                 )
