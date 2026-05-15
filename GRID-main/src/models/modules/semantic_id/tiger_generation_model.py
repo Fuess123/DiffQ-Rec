@@ -1,3 +1,4 @@
+import copy
 import logging
 from typing import Any, Dict, Optional, Set, Tuple, Union
 
@@ -507,6 +508,9 @@ class SemanticIDEncoderDecoder(SemanticIDGenerativeRecommender):
         should_add_sep_token: bool = True,
         prediction_key_name: str = "user_id",
         prediction_value_name: str = "semantic_ids",
+        tiger_kd_teacher_ckpt_path: Optional[str] = None,
+        tiger_kd_weight: float = 0.0,
+        tiger_kd_temperature: float = 2.0,
         ranking_distill_candidates_path: Optional[str] = None,
         ranking_distill_scores_path: Optional[str] = None,
         ranking_distill_weight: float = 0.0,
@@ -614,6 +618,11 @@ class SemanticIDEncoderDecoder(SemanticIDGenerativeRecommender):
         # the key value names for the prediction output
         self.prediction_key_name = prediction_key_name
         self.prediction_value_name = prediction_value_name
+        self.tiger_kd_weight = tiger_kd_weight
+        self.tiger_kd_temperature = tiger_kd_temperature
+        object.__setattr__(self, "tiger_kd_teacher", None)
+        if tiger_kd_teacher_ckpt_path is not None and tiger_kd_weight > 0:
+            self._initialize_tiger_kd_teacher(tiger_kd_teacher_ckpt_path)
         self.ranking_distill_weight = ranking_distill_weight
         self.ranking_distill_temperature = ranking_distill_temperature
         self.register_buffer(
@@ -636,6 +645,69 @@ class SemanticIDEncoderDecoder(SemanticIDGenerativeRecommender):
         if not isinstance(tensor, torch.Tensor):
             raise TypeError(f"ranking distillation file must contain a torch.Tensor, got {type(tensor)}")
         return tensor.to(dtype=dtype).contiguous()
+
+    def _initialize_tiger_kd_teacher(self, checkpoint_path: str) -> None:
+        teacher = copy.deepcopy(self)
+        object.__setattr__(teacher, "tiger_kd_teacher", None)
+        teacher.tiger_kd_weight = 0.0
+        checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+        state_dict = checkpoint.get("state_dict", checkpoint)
+        missing, unexpected = teacher.load_state_dict(state_dict, strict=False)
+        if missing:
+            logging.warning("Missing keys while loading TIGER KD teacher: %s", missing)
+        if unexpected:
+            logging.warning("Unexpected keys while loading TIGER KD teacher: %s", unexpected)
+        teacher.eval()
+        for parameter in teacher.parameters():
+            parameter.requires_grad_(False)
+        object.__setattr__(self, "tiger_kd_teacher", teacher)
+
+    def _compute_hierarchy_logits(
+        self,
+        model_output: torch.Tensor,
+    ) -> list[torch.Tensor]:
+        return [
+            self.decoder.decoder_mlp[hierarchy](model_output[:, hierarchy])
+            for hierarchy in range(self.num_hierarchies)
+        ]
+
+    def _tiger_logit_distillation_loss(
+        self,
+        model_input: SequentialModelInputData,
+        fut_ids: torch.Tensor,
+        student_logits: list[torch.Tensor],
+    ) -> torch.Tensor:
+        if (
+            getattr(self, "tiger_kd_weight", 0.0) <= 0
+            or getattr(self, "tiger_kd_teacher", None) is None
+        ):
+            return student_logits[0].new_tensor(0.0)
+
+        teacher = self.tiger_kd_teacher.to(student_logits[0].device)
+        teacher.eval()
+        with torch.no_grad():
+            teacher_output = teacher.forward(
+                attention_mask_encoder=model_input.mask,
+                future_ids=fut_ids,
+                **{
+                    teacher.feature_to_model_input_map.get(k, k): v
+                    for k, v in model_input.transformed_sequences.items()
+                },
+            )
+            teacher_output = teacher_output[:, :-1]
+            teacher_logits = teacher._compute_hierarchy_logits(teacher_output)
+
+        temperature = self.tiger_kd_temperature
+        loss = student_logits[0].new_tensor(0.0)
+        for student_logit, teacher_logit in zip(student_logits, teacher_logits):
+            student_log_probs = F.log_softmax(student_logit / temperature, dim=-1)
+            teacher_probs = F.softmax(teacher_logit / temperature, dim=-1)
+            loss = loss + F.kl_div(
+                student_log_probs,
+                teacher_probs,
+                reduction="batchmean",
+            ) * (temperature ** 2)
+        return loss / self.num_hierarchies
 
     def encoder_forward_pass(
         self,
@@ -998,26 +1070,24 @@ class SemanticIDEncoderDecoder(SemanticIDGenerativeRecommender):
         model_output = model_output[:, :-1]
 
         # the label locations is shared for all semantic id hierarchies
+        hierarchy_logits = self._compute_hierarchy_logits(model_output)
         loss = 0
-        hierarchy_logits = []
-        for hierarchy in range(self.num_hierarchies):
-
-            input = self.decoder.decoder_mlp[hierarchy](model_output[:, hierarchy])
-            hierarchy_logits.append(input)
+        for hierarchy, input in enumerate(hierarchy_logits):
             loss += self.loss_function(
                 input=input,
                 target=fut_ids[:, hierarchy].long(),
             )
 
-        ranking_distill_loss = self._ranking_distillation_loss(
+        tiger_kd_loss = self._tiger_logit_distillation_loss(
             model_input=model_input,
-            hierarchy_logits=hierarchy_logits,
+            fut_ids=fut_ids,
+            student_logits=hierarchy_logits,
         )
-        loss = loss + getattr(self, "ranking_distill_weight", 0.0) * ranking_distill_loss
-        if getattr(self, "ranking_distill_weight", 0.0) > 0:
+        loss = loss + getattr(self, "tiger_kd_weight", 0.0) * tiger_kd_loss
+        if getattr(self, "tiger_kd_weight", 0.0) > 0:
             self.log(
-                "train/ranking_distill_loss",
-                ranking_distill_loss,
+                "train/tiger_kd_loss",
+                tiger_kd_loss,
                 on_step=True,
                 on_epoch=True,
                 prog_bar=True,
